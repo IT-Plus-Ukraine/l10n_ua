@@ -177,6 +177,27 @@ class TestRahunokInvoice(AccountTestInvoicingCommon):
         self.assertIn('1%s000,00' % NBSP, html)   # unit price without VAT
         self.assertIn('3%s600,00' % NBSP, html)   # amount with VAT
 
+    def test_price_unit_without_vat_product_price_precision(self):
+        """Ціна без ПДВ — з точністю «Product Price», а не валюти (2 знаки)."""
+        self.env.ref('product.decimal_price').digits = 4
+        vat_20_excluded = self.env['account.tax'].create({
+            'name': 'ПДВ 20% (тест)', 'amount': 20.0, 'amount_type': 'percent',
+            'type_tax_use': 'sale', 'company_id': self.env.company.id,
+        })
+        invoice = self._invoice(lines=[{
+            'name': 'ПДВ у ціні', 'quantity': 1, 'price_unit': 10.1234,
+            'tax_ids': [(6, 0, self.vat_20_included.ids)],
+        }, {
+            'name': 'ПДВ не в ціні', 'quantity': 1, 'price_unit': 10.1234,
+            'tax_ids': [(6, 0, vat_20_excluded.ids)],
+        }])
+        included, excluded = invoice._get_ua_report_lines()
+        self.assertAlmostEqual(invoice._get_ua_line_price_unit_excl(included), 8.4362, places=6)
+        self.assertAlmostEqual(invoice._get_ua_line_price_unit_excl(excluded), 10.1234, places=6)
+        html = self._render(invoice)
+        self.assertIn('8,4362', html)
+        self.assertIn('10,1234', html)
+
     def test_number_formats(self):
         Move = self.env['account.move']
         self.assertEqual(Move._ua_format_number(146150), '146%s150,00' % NBSP)

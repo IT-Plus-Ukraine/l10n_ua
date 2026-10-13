@@ -1,6 +1,7 @@
 import re
 
 from odoo import api, models
+from odoo.tools import float_round
 
 from odoo.addons.l10n_ua_account_base.tools.formatters import (
     amount_to_words_ua,
@@ -153,11 +154,17 @@ class L10nUaDocReportMixin(models.AbstractModel):
         return text
 
     def _get_ua_line_price_unit_excl(self, line):
-        """Unit price without VAT (before discount), also for taxes included in price."""
+        """Unit price without VAT (before discount), also for taxes included in price.
+
+        compute_all rounds total_excluded to the currency (2 digits), which cuts
+        unit prices with a 3-4 digit 'Product Price' precision: round to that
+        precision instead.
+        """
         if not line.tax_ids:
             return line.price_unit
-        taxes = line.tax_ids.compute_all(
+        taxes = line.tax_ids.with_context(round_base=False).compute_all(
             line.price_unit, currency=line.currency_id, quantity=1.0,
             product=line.product_id, partner=self._get_ua_buyer(),
         )
-        return taxes['total_excluded']
+        digits = self.env['decimal.precision'].precision_get('Product Price')
+        return float_round(taxes['total_excluded'], precision_digits=digits)
